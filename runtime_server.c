@@ -6,7 +6,7 @@
 #include <unistd.h>			// for read, write, close
 #include <time.h>			// for time functions
 #include <ctype.h>			// for toupper
-#include "security.h"
+#include "security.c"
 
 #define BUFLEN 1024 // define buffer length
 
@@ -50,7 +50,7 @@ int main ()
 		while (1) {
 			// send asymmetric public key from the public/private key pair to Dawn so Dawn can use it encrypt its password
 			// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
-			write(sockfd, public_key, strlen(public_key));
+			write(sockfd, public_key_string, strlen(public_key_string));
 			/* 
 			Receive from Dawn -> Runtime: signed + encrypted password + public key to use for verification
 			-> char* encrypted message

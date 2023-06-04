@@ -1,7 +1,7 @@
 #include "security.h"
 
 #define HASHLEN 32
-#define BUFLEN 2048
+#define BUFLEN 1024
 
 // BIO's are OPENSSL's own implementation of I/O channels. Used in this case to store the private key in a temporary spot without needing to write out to a file
 BIO* mem = NULL;
@@ -17,7 +17,7 @@ int initialize_BIO() {
 }
 
 //signature. Person who sends message. Creates random public/private key. public_key_string points to the public key
-int create_public_key(char* public_key_string) {
+int create_public_key(char** public_key_string) {
     EVP_PKEY_CTX* ctx;      // context holding info related to public key encryption
     EVP_PKEY* pkey = NULL;  // public key from a private/public key pair
 
@@ -38,47 +38,30 @@ int create_public_key(char* public_key_string) {
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0) { //generated key written to pkey
         return -1;
     }
+
     // store the private key in OPENSSL's temporary memory buffer
-    PEM_write_bio_PrivateKey(mem, pkey, NULL, NULL, 0, 0, NULL); // private key stored in mem created earlier
+    PEM_write_bio_PrivateKey(mem, pkey, NULL, NULL, 0, 0, NULL);
 
-    //write the public key to the .pem file
-    FILE* public_key_file = fopen("keys.pem", "w+");
+    FILE* public_key = fopen("keys.pem", "w+");
+    PEM_write_PUBKEY(public_key, pkey);
+    fclose(public_key);
 
-    PEM_write_PUBKEY(public_key_file, pkey);
-
-    fseek(public_key_file, 0, SEEK_SET);
-
-    char ignore_line[256];
-    int line_count = 0;
-    while (fgets(ignore_line, sizeof(ignore_line), public_key_file) != NULL) {
-        line_count++;
+    FILE* read_from_key = fopen("keys.pem", "r");
+    if (read_from_key == NULL) {
+        return -1;
     }
 
-    fseek(public_key_file, 0, SEEK_SET);
-    char line[256];
-    if (fgets(line, sizeof(line), public_key_file) == NULL) {
-        printf("File is empty.\n");
-        fclose(public_key_file);
-        return 1;
-    }
-    
-    int count = 0;
-    // Read and store the lines until the last line
-    while (fgets(line, sizeof(line), public_key_file) != NULL && count < line_count - 2) {
-        // Remove the trailing newline character
-        line[strcspn(line, "\n")] = '\0';
-
-        // Append the line to the content variable
-        strcat(public_key_string, line);
-        count += 1;
+    *public_key_string = malloc(BUFLEN * sizeof(char));
+    if (*public_key_string == NULL) {
+        free(*public_key_string);
+        return -1;
     }
 
-    // Remove the trailing newline character at the end
-    public_key_string[strlen(public_key_string)] = '\0';
+    fread(*public_key_string, BUFLEN, sizeof(char), read_from_key);
 
+    fclose(read_from_key);
     EVP_PKEY_free(pkey);
     EVP_PKEY_CTX_free(ctx);
-    fclose(public_key_file);
     return 0;
 }
 
@@ -246,70 +229,70 @@ char* printable_hash(unsigned char* hashed_salted_message) {
     return hex_hash;
 }
 
-int main() {
-    BIO_reset(mem);
-    initialize_BIO();
-    char public_key_string[500] = "";
-    char* salted_message;
+// int main() {
+//     BIO_reset(mem);
+//     initialize_BIO();
+//     char* public_key_string;
+//     char* salted_message;
 
-    create_public_key(public_key_string);
-    printf("public key: %s\n", public_key_string);
+//     create_public_key(&public_key_string);
+//     printf("public key: %s\n", public_key_string);
 
-    FILE* pem_file = fopen("keys.pem", "r");
-    EVP_PKEY* public_key = PEM_read_PUBKEY(pem_file, NULL, NULL, NULL);
-    fclose(pem_file);
+//     FILE* pem_file = fopen("keys.pem", "r");
+//     EVP_PKEY* public_key = PEM_read_PUBKEY(pem_file, NULL, NULL, NULL);
+//     fclose(pem_file);
 
-    PEM_read_bio_PrivateKey(mem, &public_key, NULL, NULL);
-    FILE* private_key_file = fopen("private.pem", "w+");
-    PEM_write_PrivateKey(private_key_file, public_key, NULL, NULL, 0, NULL, NULL);
+//     PEM_read_bio_PrivateKey(mem, &public_key, NULL, NULL);
+//     FILE* private_key_file = fopen("private.pem", "w+");
+//     PEM_write_PrivateKey(private_key_file, public_key, NULL, NULL, 0, NULL, NULL);
 
 
-    char* team_password = "myteamisgreat";
-    //create_salt_string(team_password); //Create salt string at the beginning so when we create password + salt, it is exactly 32 chars length and is randomized
-    salt_string(team_password, &salted_message);
-    printf("salted: %s\n", salted_message);
+//     char* team_password = "myteamisgreat";
+//     //create_salt_string(team_password); //Create salt string at the beginning so when we create password + salt, it is exactly 32 chars length and is randomized
+//     salt_string(team_password, &salted_message);
+//     printf("salted: %s\n", salted_message);
 
-    unsigned char* hashed_salted_message;
+//     unsigned char* hashed_salted_message;
 
-    hash_message(salted_message, &hashed_salted_message);
-    printf("hashed: %s\n", hashed_salted_message);
+//     hash_message(salted_message, &hashed_salted_message);
+//     printf("hashed: %s\n", hashed_salted_message);
 
-    char* hashed_salted = printable_hash(hashed_salted_message);
-    printf("Hashed Salted Message (Hex): %s\n", hashed_salted);
+//     char* hashed_salted = printable_hash(hashed_salted_message);
+//     printf("Hashed Salted Message (Hex): %s\n", hashed_salted);
 
-    free(hashed_salted);
-    OPENSSL_free(hashed_salted_message);
+//     free(hashed_salted);
+//     OPENSSL_free(hashed_salted_message);
     
 
-    // if (hash_message(salted_message, &hashed_salted_message) == 0) {
-    // // Convert binary hash to hexadecimal string representation
-    // char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
-    // for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
-    //     sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
-    // }
-    // hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
+//     // if (hash_message(salted_message, &hashed_salted_message) == 0) {
+//     // // Convert binary hash to hexadecimal string representation
+//     // char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
+//     // for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
+//     //     sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
+//     // }
+//     // hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
 
-    // printf("Hashed Salted Message (Hex): %s\n", hex_hash);
+//     // printf("Hashed Salted Message (Hex): %s\n", hex_hash);
 
-    // free(hex_hash);
-    // OPENSSL_free(hashed_salted_message);
-    // } else {
-    //     printf("Hashing failed.\n");
-    // } 
+//     // free(hex_hash);
+//     // OPENSSL_free(hashed_salted_message);
+//     // } else {
+//     //     printf("Hashing failed.\n");
+//     // } 
 
 
-    // hash_message(salted_message, &hashed_salted_message);
+//     // hash_message(salted_message, &hashed_salted_message);
 
-    // printf("hashed: %s\n", hashed_salted_message);
+//     // printf("hashed: %s\n", hashed_salted_message);
 
-    //create_public_key(public_key);
+//     //create_public_key(public_key);
 
-    //char* encrypted_message = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApkj48t8AGXNMhL6O4jaIXK9kPTlH1Ydl1UmlIMVNp5XmzzU3fEBQpG5/eJ2Mz6C2G3VH0G40SeayWSqwRmaTe0sHIsL1hb6Xb7E3cj8LibHaYljMi/IZJ4TEnCE1PIt9eVTtqKaxRFBvNYo2mqbz+kH9c+UzqhxVP0d8LT+p9Jfito1fP/NZoYNOcDwbgJ0VwmfK3Hno+Y5HLvsEMBdRfq43xscwhcLcghx0NU44mvrSvJE/Z/Moq8xId0Q+y7POrh+IpX9A6Uer955OeTZ0w/nAMUO8VR55Eu+iXV+k/uTgmHI+ygE0RnnRkUiyu8wadvl9e25aXZC7zD2duTqDHwIDAQAB";
+//     //char* encrypted_message = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApkj48t8AGXNMhL6O4jaIXK9kPTlH1Ydl1UmlIMVNp5XmzzU3fEBQpG5/eJ2Mz6C2G3VH0G40SeayWSqwRmaTe0sHIsL1hb6Xb7E3cj8LibHaYljMi/IZJ4TEnCE1PIt9eVTtqKaxRFBvNYo2mqbz+kH9c+UzqhxVP0d8LT+p9Jfito1fP/NZoYNOcDwbgJ0VwmfK3Hno+Y5HLvsEMBdRfq43xscwhcLcghx0NU44mvrSvJE/Z/Moq8xId0Q+y7POrh+IpX9A6Uer955OeTZ0w/nAMUO8VR55Eu+iXV+k/uTgmHI+ygE0RnnRkUiyu8wadvl9e25aXZC7zD2duTqDHwIDAQAB";
 
-    //char* encrypted_message = "myteamisgreat";
-    //char* decrypted;
+//     //char* encrypted_message = "myteamisgreat";
+//     //char* decrypted;
 
-    //decrypt_login_info(encrypted_message, decrypted);
+//     //decrypt_login_info(encrypted_message, decrypted);
 
-    return 0;
-}
+//     return 0;
+// }

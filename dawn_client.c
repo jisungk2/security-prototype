@@ -4,20 +4,41 @@
 #include <stdlib.h>			// for malloc, free, exit
 #include <string.h>			// for strcpy, memset
 #include <unistd.h>			// for read, write, close
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include "security.c"
 
 #define BUFLEN 1024 // length of buffer to hold messages
 
-// read response from server
-void read_response (char *buf, int sockfd) 
-{
-	int i;
-	char c;
-	// read one byte at a time from server and put into buf
-	for (c = '\0', i = 0; i < BUFLEN && c != '\n'; i++) {
-		read(sockfd, &c, 1);
-		buf[i] = c;
-	}
-	buf[i] = '\0';
+// Function to encrypt the password using RSA algorithm
+int rsaEncrypt(const char* publicKeyFile, const char* password, unsigned char** encryptedData, size_t* encryptedDataLength) {
+    FILE* publicKey = fopen(publicKeyFile, "r");
+    if (!publicKey) {
+        printf("Failed to open public key file.\n");
+        return 0;
+    }
+
+    RSA* rsaKey = PEM_read_RSA_PUBKEY(publicKey, NULL, NULL, NULL);
+    if (!rsaKey) {
+        printf("Failed to read public key.\n");
+        fclose(publicKey);
+        return 0;
+    }
+
+    int rsaKeySize = RSA_size(rsaKey);
+    *encryptedData = (unsigned char*)malloc(rsaKeySize);
+    *encryptedDataLength = RSA_public_encrypt(strlen(password), (unsigned char*)password, *encryptedData, rsaKey, RSA_PKCS1_PADDING);
+
+    RSA_free(rsaKey);
+    fclose(publicKey);
+
+    if (*encryptedDataLength == -1) {
+        printf("Failed to encrypt the password.\n");
+        free(*encryptedData);
+        return 0;
+    }
+
+    return 1;
 }
 
 int main ()
@@ -34,36 +55,44 @@ int main ()
 	connect(sockfd, (struct sockaddr *)&serv_addr, serv_addr_len); // make the call to connect
 	
 	// buffer for holding messages
-	char *buf = (char *) malloc(sizeof(char) * BUFLEN);
+	char *public_key = (char *) malloc(sizeof(char) * BUFLEN);
 	size_t max_len = BUFLEN; // need this for calling getline
-	
-	// for reading response from server
-	char c;
-	int i;
+	FILE* publicKeyFile;
 	
 	// enter while loop to get input from terminal
 	while (1) {
-		// print a prompt to the terminal
-		printf("-->  ");
-		
-		// get a line of input from the terminal (stdin)
-		getline(&buf, &max_len, stdin);
-		
-		// send it to the server
-		write(sockfd, buf, strlen(buf));
-		
-		// read response from server
-		read_response(buf, sockfd);
-		
-		// print response to terminal
-		printf("%s", buf);
+		read(sockfd, public_key, max_len);
+		printf("public_key: %s", public_key);
+
+		publicKeyFile = fopen("publicKey.pem", "w+");
+
+		fwrite(public_key, sizeof(char), sizeof(public_key), publicKeyFile);
+
+		const char* pKeyFileName = "publicKey.pem";
+		const char* password = "myteamisgreat";
+
+		unsigned char* encryptedData;
+    	size_t encryptedDataLength;
+
+	    if (rsaEncrypt(pKeyFileName, password, &encryptedData, &encryptedDataLength)) {
+        	printf("Encrypted password:\n");
+        	for (size_t i = 0; i < encryptedDataLength; ++i) {
+            	printf("%02x", encryptedData[i]);
+        	}
+        	printf("\n");
+
+        	free(encryptedData);
+    	}
+
 	}
+
+	fclose(publicKeyFile);
 	
 	// close the socket to initiate connection termination
 	close(sockfd);
 	
 	// free the buffer
-	free(buf);
+	free(public_key);
 	
 	return 0;
 }

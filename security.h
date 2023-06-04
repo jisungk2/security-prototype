@@ -11,7 +11,7 @@
 * Creates the public and private key pair.
 * Stores the public key and private key as a PEM 
 */
-int create_public_key(char* public_key_string);
+int create_public_key(char** public_key_string);
 
 /**
  * Initializes the memory BIO that will be used to store the private key
