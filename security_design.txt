@@ -1,0 +1,81 @@
+Store team specific password (salted and encrypted password)
+change password feature on dawns end. Use old password and new password
+tell students the temporary password at the beginning 
+
+Runtime: Generate public/private key pair. Store the private key in BIO.
+    - all done by create_public_key function 
+
+Runtime-> Dawn: send asymmetric public key from the public/private key pair to Dawn so Dawn can use it encrypt its password
+Why the does the doc say asymmetric public key?
+
+asymmetric: different key to encrypt and decrypt. Only receiver has private key
+public key allows to send to receiver encrypted. Use RSA library for dawn end to create 
+Hailey started working on dawn's end of security 
+https://en.wikipedia.org/wiki/Public-key_cryptography
+https://stackoverflow.com/questions/454048/what-is-the-difference-between-encrypting-and-signing-in-asymmetric-encryption
+
+good students and bad student
+bad student can listen to public private pair and send to runtime for connection
+good student needs to sign the public private pair so runtime knows its from good student
+
+Dawn -> Runtime: signed + encrypted password + public key for use for verification
+What does signed mean here? dont worry about signing for now (might not need to use it)
+
+
+Runtime:
+    1. compare the public key received from dawn with the already generated public key 
+    2. if the public keys are equal, we have received connection request from valid machine
+    3. using the private key we have already generated, decrypt the encrypted password received from Dawn
+        - how does the private key we created originally work in decrypting the password received from Dawn?
+    4. append team specific salt to the decrypted password (salt is stored in disk or students' potatos)
+    5. hash (decrypted password + salt)
+    6. compare with hashed password + salt stored on disk
+    7. if successful, continue! if fails, text protobuf for wrong password and then DC
+
+
+Dawn_client's encryption using openssl RSA library
+
+#include <stdio.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+
+// Function to encrypt password using RSA public key
+int encryptPassword(const char* password, RSA* publicKey, unsigned char* encryptedData) {
+    int encryptedLength = RSA_public_encrypt(strlen(password), (const unsigned char*)password,
+                                             encryptedData, publicKey, RSA_PKCS1_PADDING);
+    return encryptedLength;
+}
+
+int main() {
+    // Assume you have received the modulus and exponent values via TCP connection
+    const char* receivedModulus = "A18F33C...";   // Replace with the actual modulus value
+    const char* receivedExponent = "010001";      // Replace with the actual exponent value
+
+    // Create RSA object and set the public key
+    RSA* publicKey = RSA_new();
+    publicKey->n = BN_new();
+    BN_hex2bn(&publicKey->n, receivedModulus);
+    publicKey->e = BN_new();
+    BN_hex2bn(&publicKey->e, receivedExponent);
+
+    // Get the password from the user
+    char password[256];
+    printf("Enter the password: ");
+    fgets(password, sizeof(password), stdin);
+
+    // Encrypt the password
+    unsigned char encryptedData[RSA_size(publicKey)];
+    int encryptedLength = encryptPassword(password, publicKey, encryptedData);
+
+    // Print the encrypted password
+    printf("Encrypted password: ");
+    for (int i = 0; i < encryptedLength; i++) {
+        printf("%02X", encryptedData[i]);
+    }
+    printf("\n");
+
+    // Clean up
+    RSA_free(publicKey);
+
+    return 0;
+}
