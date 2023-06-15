@@ -6,6 +6,7 @@
 #include <unistd.h>			// for read, write, close
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
+#include <errno.h>
 #include "security.c"
 
 #define BUFLEN 1024 // length of buffer to hold messages
@@ -60,33 +61,32 @@ int main ()
 	FILE* publicKeyFile;
 	
 	// enter while loop to get input from terminal
-	while (1) {
-		read(sockfd, public_key, max_len);
-		printf("public_key: %s", public_key);
-
-		publicKeyFile = fopen("publicKey.pem", "w+");
-
-		fwrite(public_key, sizeof(char), sizeof(public_key), publicKeyFile);
-
-		const char* pKeyFileName = "publicKey.pem";
-		const char* password = "myteamisgreat";
-
-		unsigned char* encryptedData;
-    	size_t encryptedDataLength;
-
-	    if (rsaEncrypt(pKeyFileName, password, &encryptedData, &encryptedDataLength)) {
-        	printf("Encrypted password:\n");
-        	for (size_t i = 0; i < encryptedDataLength; ++i) {
-            	printf("%02x", encryptedData[i]);
-        	}
-        	printf("\n");
-
-        	free(encryptedData);
-    	}
-
+	if (read(sockfd, public_key, max_len) == -1) {
+		printf("error: %s\n", strerror(errno));
+		fflush(stdout);
 	}
 
+	publicKeyFile = fopen("publicKey.pem", "w+");
+
+	fwrite(public_key, sizeof(char), strlen(public_key), publicKeyFile);
 	fclose(publicKeyFile);
+
+	const char* pKeyFileName = "publicKey.pem";
+	const char* password = "myteamisgreat";
+
+	unsigned char* encryptedData;
+	size_t encryptedDataLength;
+
+	if (rsaEncrypt(pKeyFileName, password, &encryptedData, &encryptedDataLength)) {
+		printf("Encrypted password:\n");
+		for (size_t i = 0; i < encryptedDataLength; ++i) {
+			printf("%02x", encryptedData[i]);
+		}
+		printf("\n");
+
+		write(sockfd, encryptedData, strlen((const char*)encryptedData));
+		free(encryptedData);
+	}
 	
 	// close the socket to initiate connection termination
 	close(sockfd);

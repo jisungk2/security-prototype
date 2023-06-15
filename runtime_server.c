@@ -36,21 +36,33 @@ int main ()
 	listen(sockfd, 2);
 	
 	// allocate buffer for receiving messages from client
-	char *buf = (char *) malloc(sizeof(char) * BUFLEN);
+	char *encrypted_message = (char *) malloc(sizeof(char) * BUFLEN);
 	
 	// holds received request type
 	int request_type;
 	
 	// enter infinite loop to connect with consecutive clients
-	while (1) {
 		// wait for client to request connection with server
-		connfd = accept(sockfd, (struct sockaddr*) &cli_addr, &cli_addr_len);
+	connfd = accept(sockfd, (struct sockaddr*) &cli_addr, &cli_addr_len);
 		
 		// enter another infinite loop that breaks when client disconnects
-		while (1) {
 			// send asymmetric public key from the public/private key pair to Dawn so Dawn can use it encrypt its password
 			// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
-			write(sockfd, public_key_string, strlen(public_key_string));
+	write(connfd, public_key_string, strlen(public_key_string));
+
+	read(connfd, encrypted_message, strlen(encrypted_message));
+
+	printf("Encrypted password:\n");
+	for (size_t i = 0; i < strlen(encrypted_message) && encrypted_message[i] != '\0'; ++i) {
+		printf("%02x", encrypted_message[i]);
+	}
+	printf("\n");
+
+	char* decrypted_message;
+	decrypt_login_info(encrypted_message, decrypted_message);
+
+	printf("decrypted message: %s\n", decrypted_message);
+
 			/* 
 			Receive from Dawn -> Runtime: signed + encrypted password + public key to use for verification
 			-> char* encrypted message
@@ -77,17 +89,14 @@ int main ()
 				break;
 			}
 			*/
-
-		}
-		close(connfd); // close the socket talking with the client
+	close(connfd); // close the socket talking with the client
 		
-	}
 	
 	// close the listening socket
 	close(sockfd);
 	
 	// free the buffer
-	free(buf);
+	free(encrypted_message);
 	
 	return 0; 
 }

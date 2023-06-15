@@ -104,7 +104,6 @@ int decrypt_login_info(char* encrypted_message, char* decrypted_message) {
         return -1;
     }
 
-    //error here!
     if (EVP_PKEY_decrypt(ctx, decryption_buffer, &decryption_buffer_len, (unsigned char*) encrypted_message, encrypted_message_len) <= 0) {
         printf("error\n");
         return -1;
