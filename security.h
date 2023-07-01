@@ -28,7 +28,7 @@ int initialize_BIO();
  *      0 if successfully decrypted
  *     -1 if an error occured
  */
-int decrypt_login_info(char* encrypted_message, char* decrypted_message);
+int decrypt_login_info(unsigned char* encrypted_message, size_t encrypted_message_len, char** decrypted_message);
 
 /**
  * Appends the salt located on the raspberry pi to the passed in string.

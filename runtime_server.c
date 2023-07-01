@@ -36,7 +36,7 @@ int main ()
 	listen(sockfd, 2);
 	
 	// allocate buffer for receiving messages from client
-	char *encrypted_message = (char *) malloc(sizeof(char) * BUFLEN);
+	char* encrypted_message = malloc(sizeof(char) * BUFLEN);
 	
 	// holds received request type
 	int request_type;
@@ -50,19 +50,56 @@ int main ()
 			// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
 	write(connfd, public_key_string, strlen(public_key_string));
 
-	read(connfd, encrypted_message, strlen(encrypted_message));
-
-	printf("Encrypted password:\n");
-	for (size_t i = 0; i < strlen(encrypted_message) && encrypted_message[i] != '\0'; ++i) {
-		printf("%02x", encrypted_message[i]);
+	read(connfd, encrypted_message, strlen((char *)encrypted_message));
+	// After reading from the client
+	ssize_t bytes_read = read(connfd, encrypted_message, BUFLEN);
+	if (bytes_read > 0) {
+		encrypted_message[bytes_read] = '\0'; // Null-terminate the received data
+		printf("encrypted_message: %s\n", encrypted_message);
+	} else {
+		printf("Error reading from the client\n");
 	}
-	printf("\n");
 
 	char* decrypted_message;
-	decrypt_login_info(encrypted_message, decrypted_message);
+	char* salted_message;
+	
+	if (decrypt_login_info((unsigned char*) encrypted_message, strlen(encrypted_message), &decrypted_message) == 0) {
+		printf("Decrypted Password: %s\n", decrypted_message);
+		salt_string(decrypted_message, &salted_message);
+		printf("salted: %s\n", salted_message);
+		free(decrypted_message);
+	}
 
-	printf("decrypted message: %s\n", decrypted_message);
+	unsigned char* hashed_salted_message;
+    if (hash_message(salted_message, &hashed_salted_message) == 0) {
+    // Convert binary hash to hexadecimal string representation
+    char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
+    for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
+        sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
+    }
+    hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
 
+    printf("Hashed Salted Message (Hex): %s\n", hex_hash);
+
+	FILE* file = fopen("hashed.txt", "r");
+    char buffer[BUFLEN];
+    if (fgets(buffer, sizeof(buffer), file) == NULL) {
+        printf("Error reading the string from the file.\n");
+        fclose(file);
+        return 1;
+    }
+	fclose(file);
+	if (strcmp(buffer, hex_hash) == 0) {
+		printf("Successful Connection!\n");
+	} else {
+		printf("Failed Connection!\n");
+	}
+
+    free(hex_hash);
+    OPENSSL_free(hashed_salted_message);
+    } else {
+        printf("Hashing failed.\n");
+    } 
 			/* 
 			Receive from Dawn -> Runtime: signed + encrypted password + public key to use for verification
 			-> char* encrypted message
