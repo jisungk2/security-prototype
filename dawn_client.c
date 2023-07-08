@@ -115,8 +115,10 @@ int main() {
 
     if (encrypt_password(password, &encrypted_password) == 0) {
         printf("encrypted_password: %s\n", encrypted_password);
+        strcat(public_key, encrypted_password);
 
-        write(sockfd, encrypted_password, strlen(encrypted_password)); // Write the encrypted data
+        //write(sockfd, encrypted_password, strlen(encrypted_password)); // Write the encrypted data
+        write(sockfd, public_key, strlen(public_key));
     }
 
     // Close the socket to initiate connection termination

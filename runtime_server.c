@@ -36,7 +36,7 @@ int main ()
 	listen(sockfd, 2);
 	
 	// allocate buffer for receiving messages from client
-	char* encrypted_message = malloc(sizeof(char) * BUFLEN);
+	char* received_message = malloc(sizeof(char) * BUFLEN);
 	
 	// holds received request type
 	int request_type;
@@ -50,15 +50,25 @@ int main ()
 			// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
 	write(connfd, public_key_string, strlen(public_key_string));
 
-	read(connfd, encrypted_message, strlen((char *)encrypted_message));
+	//read(connfd, encrypted_message, strlen((char *)encrypted_message));
+
 	// After reading from the client
-	ssize_t bytes_read = read(connfd, encrypted_message, BUFLEN);
+	ssize_t bytes_read = read(connfd, received_message, BUFLEN);
 	if (bytes_read > 0) {
-		encrypted_message[bytes_read] = '\0'; // Null-terminate the received data
-		printf("encrypted_message: %s\n", encrypted_message);
+		received_message[bytes_read] = '\0'; // Null-terminate the received data
+		printf("received_message: %s\n", received_message);
 	} else {
 		printf("Error reading from the client\n");
 	}
+
+	char received_public_key[BUFLEN];
+	strncpy(received_public_key, received_message, strlen(public_key_string));
+	received_public_key[strlen(public_key_string)] = '\0';
+	printf("received_public_key: %s\n", received_public_key);
+
+	char* encrypted_message = malloc(sizeof(char) * BUFLEN);
+	strncpy(encrypted_message, received_message + strlen(public_key_string), BUFLEN);
+	printf("encrypted_message: %s\n", encrypted_message);
 
 	char* decrypted_message;
 	char* salted_message;
@@ -89,7 +99,7 @@ int main ()
         return 1;
     }
 	fclose(file);
-	if (strcmp(buffer, hex_hash) == 0) {
+	if (strcmp(buffer, hex_hash) == 0 && strcmp(public_key_string, received_public_key) == 0) {
 		printf("Successful Connection!\n");
 	} else {
 		printf("Failed Connection!\n");
@@ -133,7 +143,7 @@ int main ()
 	close(sockfd);
 	
 	// free the buffer
-	free(encrypted_message);
+	free(received_message);
 	
 	return 0; 
 }
