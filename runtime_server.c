@@ -10,9 +10,35 @@
 
 #define BUFLEN 1024 // define buffer length
 
-// define request types
-#define UNDEF -1
-#define CLI_DEAD -2 // when client dies
+// Function to send acknowledgment to the client
+int send_ack(int connfd) {
+    const char* ack_msg = "ACK";
+    if (write(connfd, ack_msg, strlen(ack_msg)) == -1) {
+        fprintf(stderr, "Error sending acknowledgment\n");
+        return -1;
+    }
+	printf("sent acknowledgment: %s\n", ack_msg);
+    return 0;
+}
+
+// Function to receive acknowledgment from the server
+int receive_ack(int connfd) {
+    char ack_buf[BUFLEN];
+    memset(ack_buf, 0, BUFLEN);
+    ssize_t bytes_read = read(connfd, ack_buf, BUFLEN - 1);
+    if (bytes_read == -1) {
+        fprintf(stderr, "Error receiving acknowledgment\n");
+        return -1;
+    }
+    ack_buf[bytes_read] = '\0';
+
+    if (strcmp(ack_buf, "ACK") != 0) {
+        fprintf(stderr, "Error: Invalid acknowledgment received\n");
+        return -1;
+    }
+	printf("received acknowledgment: %s\n", ack_buf);
+    return 0;
+}
 
 int main () 
 {
@@ -36,114 +62,115 @@ int main ()
 	listen(sockfd, 2);
 	
 	// allocate buffer for receiving messages from client
-	char* received_message = malloc(sizeof(char) * BUFLEN);
+	char* encrypted_message = malloc(sizeof(char) * BUFLEN);
+	char* received_public_key = malloc(sizeof(char) * BUFLEN);
+	char* received_signature = malloc(sizeof(char) * BUFLEN);
 	
-	// holds received request type
-	int request_type;
-	
-	// enter infinite loop to connect with consecutive clients
-		// wait for client to request connection with server
+	// wait for client to request connection with server
 	connfd = accept(sockfd, (struct sockaddr*) &cli_addr, &cli_addr_len);
 		
-		// enter another infinite loop that breaks when client disconnects
-			// send asymmetric public key from the public/private key pair to Dawn so Dawn can use it encrypt its password
-			// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
+	// send asymmetric public key from the public/private key pair to Dawn so Dawn can use it to encrypt its password
+	// if public key not equal, immediately disconnect. <- Will be much more difficult than it seems because I need to understand protobuf
 	write(connfd, public_key_string, strlen(public_key_string));
 
-	//read(connfd, encrypted_message, strlen((char *)encrypted_message));
+	receive_ack(connfd);
 
-	// After reading from the client
-	ssize_t bytes_read = read(connfd, received_message, BUFLEN);
+	// read the public key that dawn sent back to runtime
+	ssize_t bytes_read = read(connfd, received_public_key, BUFLEN);
+	send_ack(connfd);
 	if (bytes_read > 0) {
-		received_message[bytes_read] = '\0'; // Null-terminate the received data
-		printf("received_message: %s\n", received_message);
+		received_public_key[bytes_read] = '\0'; // Null-terminate the received data
+		printf("received_public_key: %s\n", received_public_key);
 	} else {
 		printf("Error reading from the client\n");
 	}
 
-	char received_public_key[BUFLEN];
-	strncpy(received_public_key, received_message, strlen(public_key_string));
-	received_public_key[strlen(public_key_string)] = '\0';
-	printf("received_public_key: %s\n", received_public_key);
+	// read the encrypted message that dawn sent to runtime 
+	bytes_read = read(connfd, encrypted_message, BUFLEN);
+	send_ack(connfd);
+	if (bytes_read > 0) {
+		encrypted_message[bytes_read] = '\0'; // Null-terminate the received data
+		printf("encrypted_message: %s\n", encrypted_message);
+	} else {
+		printf("Error reading from the client\n");
+	}
 
-	char* encrypted_message = malloc(sizeof(char) * BUFLEN);
-	strncpy(encrypted_message, received_message + strlen(public_key_string), BUFLEN);
-	printf("encrypted_message: %s\n", encrypted_message);
+	// read the signature that dawn sent to runtime
+	bytes_read = read(connfd, received_signature, BUFLEN);
+	send_ack(connfd);
+	if (bytes_read > 0) {
+		received_signature[bytes_read] = '\0'; // Null-terminate the received data
+		printf("received_signature: %s\n", received_signature);
+	} else {
+		printf("Error reading from the client\n");
+	}
 
 	char* decrypted_message;
 	char* salted_message;
 	
+	// decrypted the received encrypted message using the saved private key
 	if (decrypt_login_info((unsigned char*) encrypted_message, strlen(encrypted_message), &decrypted_message) == 0) {
 		printf("Decrypted Password: %s\n", decrypted_message);
-		salt_string(decrypted_message, &salted_message);
+		salt_string(decrypted_message, &salted_message); // salt the decrypted password
 		printf("salted: %s\n", salted_message);
-		free(decrypted_message);
 	}
 
 	unsigned char* hashed_salted_message;
+
+	// create hash from salted string
     if (hash_message(salted_message, &hashed_salted_message) == 0) {
-    // Convert binary hash to hexadecimal string representation
-    char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
-    for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
-        sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
-    }
-    hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
+		// Convert binary hash to hexadecimal string representation
+		char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
+		for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
+			sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
+		}
+		hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
 
-    printf("Hashed Salted Message (Hex): %s\n", hex_hash);
+		printf("Hashed Salted Message (Hex): %s\n", hex_hash);
 
-	FILE* file = fopen("hashed.txt", "r");
-    char buffer[BUFLEN];
-    if (fgets(buffer, sizeof(buffer), file) == NULL) {
-        printf("Error reading the string from the file.\n");
-        fclose(file);
-        return 1;
-    }
-	fclose(file);
-	if (strcmp(buffer, hex_hash) == 0 && strcmp(public_key_string, received_public_key) == 0) {
-		printf("Successful Connection!\n");
-	} else {
-		printf("Failed Connection!\n");
-	}
+		FILE* file = fopen("hashed.txt", "r");
+		char buffer[BUFLEN];
+		if (fgets(buffer, sizeof(buffer), file) == NULL) {
+			printf("Error reading the string from the file.\n");
+			fclose(file);
+			return 1;
+		}
+		fclose(file);
 
-    free(hex_hash);
-    OPENSSL_free(hashed_salted_message);
+		// compare hash value stored in disk and hash value created from received encrypted password 
+		// compare public key sent from runtime to dawn and public key sent from dawn to runtime
+		if (strcmp(buffer, hex_hash) == 0 && strcmp(public_key_string, received_public_key) == 0) {
+			printf("Hashed value and received public key match!\n");
+		} else {
+			printf("Failed Connection!\n");
+		}
+
+		const char* public_key_file = "public_key.pem";
+
+		// verify the signature that is sent from dawn to runtime using the public key that matches the private key that dawn used to sign its password
+		if (verify_signature((const unsigned char*) decrypted_message, strlen(decrypted_message), (const unsigned char*) received_signature, strlen(received_signature), public_key_file) == 1) {
+			printf("Valid signature!\n");
+		} else {
+			printf("Invalid signature!\n");
+		}
+
+		// free the buffer
+		free(public_key_string);
+		free(salted_message);
+		free(decrypted_message);
+		free(hex_hash);
+		free(encrypted_message);
+		free(received_public_key);
+		free(received_signature);
+		OPENSSL_free(hashed_salted_message);
     } else {
         printf("Hashing failed.\n");
     } 
-			/* 
-			Receive from Dawn -> Runtime: signed + encrypted password + public key to use for verification
-			-> char* encrypted message
 
-			if (strcmp(received public_key, public_key) != 0) {
-				text protobuf we have received connection request from invalid machine
-				break;
-			} 
-
-			char* decrypted_message
-			decrypt_login_info(encrypted_message, decrypted_message);
-
-			char* salted_message;
-			salt_string(decrypted_message, &salted_message);
-
-			unsigned char* hashed_salted_message;
-			hash_message(salted_message, &hashed_salted_message);
-
-			if (compare_hashed_password(hashed_salted_message) == 0) {
-				printf("valid pasword!");
-				continue with connected dawn
-			} else {
-				text protobuf for invalid password
-				break;
-			}
-			*/
 	close(connfd); // close the socket talking with the client
 		
-	
 	// close the listening socket
 	close(sockfd);
-	
-	// free the buffer
-	free(received_message);
 	
 	return 0; 
 }

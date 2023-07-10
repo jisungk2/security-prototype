@@ -1,8 +1,8 @@
-# Ignore all
-*
+dawn_client
 
-# Unignore all with extensions
-!*.*
+runtime_server
 
-# Unignore all dirs
-!*/
+security
+
+*.pem
+

@@ -303,89 +303,54 @@ char* printable_hash(unsigned char* hashed_salted_message) {
     return hex_hash;
 }
 
-// int main() {
-// //     initialize_BIO();
-// //     char* public_key_string;
-// //     char* salted_message;
+int verify_signature(const unsigned char* message, size_t message_len, const unsigned char* signature, size_t signature_len, const char* public_key_file) {
+    FILE* public_key_file_ptr = fopen(public_key_file, "r");
+    if (public_key_file_ptr == NULL) {
+        fprintf(stderr, "Error opening public key file");
+        return -1;
+    }
 
-// //     create_public_key(&public_key_string);
-// //     printf("public key: %s\n", public_key_string);
+    EVP_PKEY* public_key = PEM_read_PUBKEY(public_key_file_ptr, NULL, NULL, NULL);
+    fclose(public_key_file_ptr);
 
-// //     const char* password = "myteamisgreat";
+    if (public_key == NULL) {
+        fprintf(stderr, "Error reading public key\n");
+        return -1;
+    }
 
-// //     char* encrypted_password;
+    EVP_MD_CTX* md_ctx = EVP_MD_CTX_new();
+    if (md_ctx == NULL) {
+        fprintf(stderr, "Error creating EVP_MD_CTX\n");
+        EVP_PKEY_free(public_key);
+        return -1;
+    }
 
-// //     if (encrypt_password(password, &encrypted_password) == 0) {
-// //         printf("encrypted_password: %s\n", encrypted_password);
-// //         char* decrypted_password;
-// //         if (decrypt_login_info((unsigned char*) encrypted_password, strlen(encrypted_password), &decrypted_password) == 0) {
-// //             printf("Decrypted Password: %s\n", decrypted_password);
-// //             free(decrypted_password);
-// //         } else {
-// //             printf("Password decryption failed.\n");
-// //         }
-// //         free(encrypted_password);
-// //     } else {
-// //         printf("Password encryption failed.\n");
-// //     }
+    if (EVP_DigestVerifyInit(md_ctx, NULL, EVP_sha256(), NULL, public_key) <= 0) {
+        fprintf(stderr, "Error initializing signature verification\n");
+        EVP_PKEY_free(public_key);
+        EVP_MD_CTX_free(md_ctx);
+        return -1;
+    }
 
-// //     return 0;
+    if (EVP_DigestVerifyUpdate(md_ctx, message, message_len) <= 0) {
+        fprintf(stderr, "Error updating signature verification\n");
+        EVP_PKEY_free(public_key);
+        EVP_MD_CTX_free(md_ctx);
+        return -1;
+    }
 
-// //     FILE* pem_file = fopen("keys.pem", "r");
-// //     EVP_PKEY* public_key = PEM_read_PUBKEY(pem_file, NULL, NULL, NULL);
-// //     fclose(pem_file);
+    int verification_result = EVP_DigestVerifyFinal(md_ctx, signature, signature_len);
 
-// //     PEM_read_bio_PrivateKey(mem, &public_key, NULL, NULL);
-// //     FILE* private_key_file = fopen("private.pem", "w+");
-// //     PEM_write_PrivateKey(private_key_file, public_key, NULL, NULL, 0, NULL, NULL);
+    if (verification_result == 1) {
+        printf("Signature verification succeeded.\n");
+    } else if (verification_result == 0) {
+        printf("Signature verification failed.\n");
+    } else {
+        fprintf(stderr, "Error during signature verification\n");
+    }
 
-//     char* salted_message;
-//     char* team_password = "myteamisgreat";
-// //     //create_salt_string(team_password); //Create salt string at the beginning so when we create password + salt, it is exactly 32 chars length and is randomized
-//     salt_string(team_password, &salted_message);
-//     printf("salted: %s\n", salted_message);
+    EVP_PKEY_free(public_key);
+    EVP_MD_CTX_free(md_ctx);
 
-//     unsigned char* hashed_salted_message;
-
-// //     hash_message(salted_message, &hashed_salted_message);
-// //     printf("hashed: %s\n", hashed_salted_message);
-
-// //     char* hashed_salted = printable_hash(hashed_salted_message);
-// //     printf("Hashed Salted Message (Hex): %s\n", hashed_salted);
-
-// //     free(hashed_salted);
-// //     OPENSSL_free(hashed_salted_message);
-    
-
-//     if (hash_message(salted_message, &hashed_salted_message) == 0) {
-//     // Convert binary hash to hexadecimal string representation
-//     char* hex_hash = malloc((2 * EVP_MD_size(EVP_sha256()) + 1) * sizeof(char));
-//     for (int i = 0; i < EVP_MD_size(EVP_sha256()); i++) {
-//         sprintf(&hex_hash[i * 2], "%02x", hashed_salted_message[i]);
-//     }
-//     hex_hash[2 * EVP_MD_size(EVP_sha256())] = '\0';
-
-//     printf("Hashed Salted Message (Hex): %s\n", hex_hash);
-
-//     free(hex_hash);
-//     OPENSSL_free(hashed_salted_message);
-//     } else {
-//         printf("Hashing failed.\n");
-//     } 
-
-
-// //     // hash_message(salted_message, &hashed_salted_message);
-
-// //     // printf("hashed: %s\n", hashed_salted_message);
-
-// //     //create_public_key(public_key);
-
-// //     //char* encrypted_message = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApkj48t8AGXNMhL6O4jaIXK9kPTlH1Ydl1UmlIMVNp5XmzzU3fEBQpG5/eJ2Mz6C2G3VH0G40SeayWSqwRmaTe0sHIsL1hb6Xb7E3cj8LibHaYljMi/IZJ4TEnCE1PIt9eVTtqKaxRFBvNYo2mqbz+kH9c+UzqhxVP0d8LT+p9Jfito1fP/NZoYNOcDwbgJ0VwmfK3Hno+Y5HLvsEMBdRfq43xscwhcLcghx0NU44mvrSvJE/Z/Moq8xId0Q+y7POrh+IpX9A6Uer955OeTZ0w/nAMUO8VR55Eu+iXV+k/uTgmHI+ygE0RnnRkUiyu8wadvl9e25aXZC7zD2duTqDHwIDAQAB";
-
-// //     //char* encrypted_message = "myteamisgreat";
-// //     //char* decrypted;
-
-// //     //decrypt_login_info(encrypted_message, decrypted);
-
-// //     return 0;
-// }
+    return verification_result;
+}

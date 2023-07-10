@@ -18,6 +18,9 @@ good students and bad student
 bad student can listen to public private pair and send to runtime for connection
 good student needs to sign the public private pair so runtime knows its from good student
 
+**We hold a specific private key for each team and its corresponding public key on disk. This special public/private key pair
+is used for signing encrypted password and verifying them from the server end.
+
 Dawn(at dawn side, the password will be created by the user and that password will be encrypted using the public key) -> Runtime: 
 signed + encrypted password + public key for use for verification
 What does signed mean here? dont worry about signing for now (might not need to use it)
